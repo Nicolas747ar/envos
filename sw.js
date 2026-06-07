@@ -1,6 +1,6 @@
 /* EnVos service worker — funciona offline una vez instalado.
    Subí el número de versión cuando cambie el código para refrescar el caché. */
-const CACHE = "envos-v1";
+const CACHE = "envos-v2";
 const ASSETS = [
   "./", "./index.html",
   "./css/styles.css",

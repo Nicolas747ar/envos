@@ -390,40 +390,52 @@ EnVos.app = (function () {
   /* ═════════════ PRECISIÓN ═════════════ */
   function viewPrecision() {
     const closed = S.getDecisions().filter(d => d.status === "closed");
+    let statsHtml;
     if (closed.length < E.MIN_SAMPLES) {
-      return `<div class="notice soft"><b>Pocos datos todavía.</b> Necesito al menos
+      statsHtml = `<div class="notice soft"><b>Pocos datos todavía.</b> Necesito al menos
         ${E.MIN_SAMPLES} ciclos cerrados para mostrarte algo confiable. Llevás ${closed.length}.</div>
-        <div class="empty"><div class="big">🎯</div>Tu precisión se construye cada vez que cerrás un ciclo.</div>`;
+        <div class="empty"><div class="big">🎯</div>Tu precisión se construye cada vez que cerrás un ciclo.<br>
+        ¿Querés ver cómo se ve? Cargá datos de ejemplo acá abajo.</div>`;
+    } else {
+      const avgHit = Math.round(avg(closed.map(d => d.outcome.predictionHit)));
+      const calib = Math.round(avg(closed.map(d => Math.abs(d.outcome.predictionError))));
+      const bias = Math.round(avg(closed.map(d => d.outcome.predictionError)));
+      const biasTxt = bias > 8 ? "Tendés a sobreestimar" : bias < -8 ? "Tendés a subestimar" : "Bien calibrado";
+      const byDom = {};
+      closed.forEach(d => (byDom[d.domain] ??= []).push(d.outcome.predictionHit));
+      const rows = Object.entries(byDom)
+        .map(([dom, hits]) => ({ dom, n: hits.length, acc: Math.round(avg(hits)) }))
+        .sort((a, b) => b.acc - a.acc);
+      statsHtml = `
+        <div class="notice">Basado en <b>${closed.length} ciclos cerrados</b>. Describe lo observado
+          en tus datos — evidencia que vas a ir afinando, no un veredicto.</div>
+        <div class="stat-grid">
+          <div class="stat"><div class="num">${avgHit}%</div><div class="lbl">Precisión promedio de tus predicciones</div></div>
+          <div class="stat"><div class="num">${calib}<span style="font-size:18px">pts</span></div><div class="lbl">${biasTxt} (calibración)</div></div>
+        </div>
+        <div class="section-title">Precisión por dominio</div>
+        ${rows.map(r => `<div class="domain-row">
+          <span class="name">${r.dom}</span>
+          <div class="bar"><div style="width:${r.acc}%;background:${barColor(r.acc)}"></div></div>
+          <span class="pct">${r.acc}% <span class="n">(${r.n}${r.n < E.MIN_SAMPLES ? "*" : ""})</span></span>
+        </div>`).join("")}
+        ${rows.some(r => r.n < E.MIN_SAMPLES) ? `<p class="footer-note">* Menos de ${E.MIN_SAMPLES} muestras: tomalo con pinzas.</p>` : ""}`;
     }
-    const avgHit = Math.round(avg(closed.map(d => d.outcome.predictionHit)));
-    const calib = Math.round(avg(closed.map(d => Math.abs(d.outcome.predictionError))));
-    const bias = Math.round(avg(closed.map(d => d.outcome.predictionError)));
-    const biasTxt = bias > 8 ? "Tendés a sobreestimar" : bias < -8 ? "Tendés a subestimar" : "Bien calibrado";
-
-    const byDom = {};
-    closed.forEach(d => (byDom[d.domain] ??= []).push(d.outcome.predictionHit));
-    const rows = Object.entries(byDom)
-      .map(([dom, hits]) => ({ dom, n: hits.length, acc: Math.round(avg(hits)) }))
-      .sort((a, b) => b.acc - a.acc);
-
-    return `
-      <div class="notice">Basado en <b>${closed.length} ciclos cerrados</b>. Describe lo observado
-        en tus datos — evidencia que vas a ir afinando, no un veredicto.</div>
-      <div class="stat-grid">
-        <div class="stat"><div class="num">${avgHit}%</div><div class="lbl">Precisión promedio de tus predicciones</div></div>
-        <div class="stat"><div class="num">${calib}<span style="font-size:18px">pts</span></div><div class="lbl">${biasTxt} (calibración)</div></div>
-      </div>
-      <div class="section-title">Precisión por dominio</div>
-      ${rows.map(r => `<div class="domain-row">
-        <span class="name">${r.dom}</span>
-        <div class="bar"><div style="width:${r.acc}%;background:${barColor(r.acc)}"></div></div>
-        <span class="pct">${r.acc}% <span class="n">(${r.n}${r.n < E.MIN_SAMPLES ? "*" : ""})</span></span>
-      </div>`).join("")}
-      ${rows.some(r => r.n < E.MIN_SAMPLES) ? `<p class="footer-note">* Menos de ${E.MIN_SAMPLES} muestras: tomalo con pinzas.</p>` : ""}
+    return statsHtml + `
       <div class="section-title">Datos</div>
-      <button class="btn-ghost" style="width:100%" onclick="EnVos.app.backup()">Exportar copia de seguridad</button>
+      <button class="btn-ghost" style="width:100%" onclick="EnVos.app.demo()">✨ Cargar datos de ejemplo</button>
+      <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="EnVos.app.backup()">Exportar copia de seguridad</button>
       <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="EnVos.app.restore()">Importar copia</button>
-    `;
+      <button class="btn-ghost danger" style="width:100%;margin-top:10px" onclick="EnVos.app.wipe()">Borrar todo</button>`;
+  }
+
+  function demo() {
+    if (confirm("Esto reemplaza tus datos actuales por un set de EJEMPLO para que veas la app funcionando. ¿Seguir?")) {
+      S.loadDemo(); go("decisiones");
+    }
+  }
+  function wipe() {
+    if (confirm("¿Borrar TODOS los datos? No se puede deshacer.")) { S.clearAll(); go("decisiones"); }
   }
 
   function backup() {
@@ -472,7 +484,7 @@ EnVos.app = (function () {
     promote,
     newHypothesis, saveHypothesis, openHypothesis, linkPicker, doLink, unlink, removeHypothesis,
     newExperiment, saveExperiment, finishExp, saveFinishExp, removeExp,
-    backup, restore
+    demo, wipe, backup, restore
   };
 })();
 
